@@ -40,7 +40,12 @@ mask[die_left, die_bottom:die_top]=1
 mask[die_right, die_bottom:die_top]=1
 mask[:, h] = 1
 
-for E_die in [13.0,1.0]:
+def make_mesh():
+    U = numpy.zeros((NX,NY),'d')
+    U[strip_left:strip_left+width, h:h+thickness] = 1.0
+    return U
+
+for E_die in [1.0]:
     end = time.time() + 3.0
     Qlist = []
     now = int(time.time())
@@ -55,38 +60,47 @@ for E_die in [13.0,1.0]:
         U = h5.root.data.read()
         h5.close()
     except:
-        U = numpy.zeros((NX,NY,2),'d')
+        U = make_mesh()
     
-    omega = repeat(1.8)
-    while count < 20000:
+    omega = repeat(1.9)
+    while True:
         try:
             Q = update(U, mask, h, E_subst, strip_left, width, thickness,
                    die_left, die_right, die_bottom, die_top,
                    E_die, dx, dy, omega.next())
         except ValueError:
             raise
-            U = numpy.zeros((NX,NY,2),'d')
+            U = make_mesh()
         last = now
         now = time.time()
         if int(now) != int(last):
             Qlist.append(Q)
-            print count, "Q=",Q
+            print count, "max error=",Q
+            if Q <= 0.001:
+                break
         count += 1
+        
+    U[NX/2:,:] = U[NX/2-1::-1,:]
         
     h5 = openFile("start_%i.h5"%this, 'w')
     a = h5.createArray("/","data",U)
     a.attrs.args = args
     h5.close()
+    
+    upper = h + thickness + 3
+    cap = (E_subst * (U[:,int(h/2)+1] - U[:,int(h/2)])/dy
+            + (U[:,upper] - U[:,upper+1])/dy).sum()
+    print "Total charge = ", cap
         
     pp.figure()
-    pp.imshow(U[:,:,0])
+    pp.imshow(U)
     pp.title("Die E-r = %f"%E_die)
     pp.colorbar()
     pp.figure()
     pp.plot(Qlist, 'ro-')
     pp.title("Die E-r = %f"%E_die)
     pp.figure()
-    pp.plot(numpy.diff(U[NX/2,:,1]),'o-')
+    pp.plot(numpy.diff(U[NX/2,:]),'o-')
 pp.show()
 
 
