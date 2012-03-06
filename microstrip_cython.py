@@ -45,8 +45,9 @@ def make_mesh():
     U[strip_left:strip_left+width, h:h+thickness] = 1.0
     return U
 
-for E_die in [1.0]:
-    end = time.time() + 3.0
+for E_die in [13.0]:
+    start = time.time()
+    end = start + 3.0
     Qlist = []
     now = int(time.time())
     count = 0
@@ -63,6 +64,7 @@ for E_die in [1.0]:
         U = make_mesh()
     
     omega = repeat(1.9)
+    start = time.time()
     while True:
         try:
             Q = update(U, mask, h, E_subst, strip_left, width, thickness,
@@ -79,6 +81,7 @@ for E_die in [1.0]:
             if Q <= 0.001:
                 break
         count += 1
+    print ">>>Completed after", time.time()-start, "seconds"
         
     U[NX/2:,:] = U[NX/2-1::-1,:]
         

@@ -6,9 +6,12 @@ for i in range(1, nx-1):
 """
 
 cimport numpy as np
+from cython.parallel import prange
 cimport cython
+import numpy
 
 @cython.boundscheck(False)
+@cython.cdivision(True)
 def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
             np.ndarray[int, ndim=2] mask,
            unsigned int h, #height of substrate (in mesh cells)
@@ -26,6 +29,7 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
     cdef:
         unsigned int i, j, N=u.shape[0], M=u.shape[1], ct
         double dx2, dy2, delta, max_delta, update
+        np.ndarray[double] adelta=numpy.zeros(u.shape[0]/2, 'd')
     
     dx2 = dx*dx
     dy2 = dy*dy
@@ -33,7 +37,7 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
     for ct in xrange(100):
         max_delta = 0.0
         #relax everywhere
-        for i in xrange(1, N/2): #-1):
+        for i in prange(1, N/2, nogil=True): #-1):
             for j in xrange(1, M-1):
                 if mask[i,j] == 1:
                     continue
@@ -42,8 +46,13 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
                               (u[i,j+1] + u[i,j-1]) * dx2) / (2*(dx2+dy2))
                     delta = update - u[i,j]
                     u[i,j] = (1-omega) * u[i,j] + omega * update
-                    if delta > max_delta:
-                        max_delta = delta
+                    if delta > adelta[i]:
+                        adelta[i] = delta
+                        
+        for i in xrange(1,N/2):
+            delta = adelta[i]
+            if delta > max_delta:
+                max_delta = delta
         
         #apply substrate top boundary condition
         j=h
