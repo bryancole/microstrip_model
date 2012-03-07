@@ -60,6 +60,7 @@ for E_die in [13.0]:
         h5 = openFile("start_%i.h5"%this)
         U = h5.root.data.read()
         h5.close()
+        raise
     except:
         U = make_mesh()
     
