@@ -32,7 +32,7 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
         np.ndarray[double] adelta=numpy.zeros(u.shape[0]/2, 'd')
     
     dx2 = dx*dx
-    dy2 = dy*dy
+    dy2 = dy*dy 
             
     for ct in xrange(100):
         max_delta = 0.0
@@ -51,7 +51,6 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
                         adelta[i] = delta
                         
         for i in prange(1, N/2, nogil=True):
-            adelta[i] = 0
             for j in xrange(2-(i%2), M-1,2):
                 if mask[i,j] == 1:
                     continue
