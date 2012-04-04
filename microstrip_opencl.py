@@ -10,8 +10,8 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 mf = cl.mem_flags
 
-NX=1000
-NY=500
+NX=1024
+NY=512
 
 dx = 0.005
 dy = 0.005
@@ -69,7 +69,6 @@ for E_die in [1.0]:
         h5.close()
     except:
         U = make_mesh()
-        
     
     U_buf = cl.Buffer(ctx, mf.READ_WRITE, U.nbytes)
     err_buf = cl.Buffer(ctx, mf.READ_WRITE, err.nbytes)
@@ -82,24 +81,38 @@ for E_die in [1.0]:
     omega = 1.9
     
     prg = cl.Program(ctx, """
-__kernel void update(__global float *u, __global uint *mask, __global float *err, const uint stidx)
+__kernel void update(__global float *u, __global uint *mask, __global float *err, const int stidx)
 {
     int i = get_global_id(0) + 1;
-    int ny = %(NX)d;
+    int ny = %(NY)d;
     float tmp, newval;
     
     if ( stidx == 1 )
         err[i-1] = 0.0;
+        
+    for (int ct = 0; ct<10; ct+=1) {
     
-    for ( int j = 1 + ( ( i + stidx ) %% 2 ); j<( %(NY)d-2 ); j+=2 ) {
-        if ( mask[ny*j + i] == 0 ) {
-          tmp = u[ny*j + i];
-          newval = ((u[ny*(j-1) + i] + u[ny*(j+1) + i])*%(dy2)g +
-                               (u[ny*j + i-1] + u[ny*j + i+1])*%(dx2)g)*%(dnr_inv)g;
-          err[i-1] = fmax( fabs(newval-tmp), err[i-1] );
-          u[ny*j+i] = (1.0 - %(omega)g)*tmp + %(omega)g*newval;
-          }
-        }
+        for ( int j = 1 + ( ( i + 1 ) %% 2 ); j<( %(NY)d-2 ); j+=2 ) {
+            if ( mask[ny*i + j] == 0 ) {
+              tmp = u[ny*i + j];
+              newval = ((u[ny*(i-1) + j] + u[ny*(i+1) + j])*%(dx2)g +
+                                   (u[ny*i + j-1] + u[ny*i + j+1])*%(dy2)g)*%(dnr_inv)g;
+              err[i-1] = fmax( fabs(newval-tmp), err[i-1] );
+              u[ny*i+j] = (1.0 - %(omega)g)*tmp + %(omega)g*newval;
+              }
+            }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for ( int j = 1 + ( ( i + 2 ) %% 2 ); j<( %(NY)d-2 ); j+=2 ) {
+            if ( mask[ny*i + j] == 0 ) {
+              tmp = u[ny*i + j];
+              newval = ((u[ny*(i-1) + j] + u[ny*(i+1) + j])*%(dx2)g +
+                                   (u[ny*i + j-1] + u[ny*i + j+1])*%(dy2)g)*%(dnr_inv)g;
+              err[i-1] = fmax( fabs(newval-tmp), err[i-1] );
+              u[ny*i+j] = (1.0 - %(omega)g)*tmp + %(omega)g*newval;
+              }
+            }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
     }
     """%{'NY':NY, 'NX': NX, 'dy2': dy2, 'dx2': dx2,'dnr_inv':dnr_inv, 'omega':omega}
     )
@@ -108,29 +121,35 @@ __kernel void update(__global float *u, __global uint *mask, __global float *err
     factor = 0.25*2*NX*NX*NY*NY*(dx2+dy2) / (3.141592654*(NY*NY*dx2 + NX*NX*dy2))
     
     def full_time_step():
-        for i in xrange(100):
+        evt1 = prg.update(queue, ((NX-2),), None,
+                        U_buf, mask_buf, err_buf, numpy.int32(1))
+        cl.enqueue_read_buffer(queue, err_buf, err).wait()
+        yield err.max() * factor
+        while True:
             evt1 = prg.update(queue, ((NX-2),), None,
-                              U_buf, mask_buf, err_buf, numpy.uint32(1))
-            cl.enqueue_wait_for_events(queue, [evt1])
-            evt2 = prg.update(queue, ((NX-2),), None,
-                              U_buf, mask_buf, err_buf, numpy.uint32(2))
-            cl.enqueue_wait_for_events(queue, [evt2])
+                        U_buf, mask_buf, err_buf, numpy.int32(1))
+            cl.enqueue_read_buffer(queue, err_buf, err).wait()
+            yield err.max() * factor
+            #evt = cl.enqueue_nd_range_kernel(queue, kern, (NX-2,), None)
+            #evt2 = prg.update(queue, ((NX-2),), None,
+            #                  U_buf, mask_buf, err_buf, numpy.int32(0))
+            #cl.enqueue_wait_for_events(queue, [evt2])
         
             ###need to apply boundary conditions
         
-        cl.enqueue_read_buffer(queue, err_buf, err).wait()
-        return err.max() * factor
+            cl.enqueue_read_buffer(queue, err_buf, err).wait()
+            yield err.max() * factor
     
-    
+    gen = full_time_step()
     start = time.time()
     while True:
-        Q = full_time_step()
+        Q = gen.next()
         last = now
         now = time.time()
         if int(now) != int(last):
             Qlist.append(Q)
             print count, "max error=",Q
-            if Q <= 0.001:
+            if Q <= 0.1:
                 break
         count += 1
     print ">>>Completed after", time.time()-start, "seconds"
