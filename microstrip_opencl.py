@@ -6,7 +6,11 @@ from itertools import cycle, chain, repeat
 
 import pyopencl as cl
 
-ctx = cl.create_some_context()
+plats = cl.get_platforms()
+devs = plats[0].get_devices()
+dev = devs[1]
+print "USING:", dev
+ctx = cl.Context(devices=[dev])
 queue = cl.CommandQueue(ctx)
 mf = cl.mem_flags
 
@@ -129,6 +133,7 @@ __kernel void update(__global float *u, __global uint *mask, __global float *err
             evt1 = prg.update(queue, ((NX-2),), None,
                         U_buf, mask_buf, err_buf, numpy.int32(1))
             cl.enqueue_read_buffer(queue, err_buf, err).wait()
+            queue.finish()
             yield err.max() * factor
             #evt = cl.enqueue_nd_range_kernel(queue, kern, (NX-2,), None)
             #evt2 = prg.update(queue, ((NX-2),), None,
