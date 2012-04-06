@@ -51,7 +51,7 @@ class Bencher(object):
         cl.enqueue_write_buffer(queue, U_buf, U).wait()
         cl.enqueue_write_buffer(queue, V_buf, V).wait()
         
-        prg = cl.Program(ctx, """
+        knl1 = """
 __kernel void update(__global float *u, __global float *v)
 {
     int i = get_global_id(0) + 1;
@@ -63,6 +63,35 @@ __kernel void update(__global float *u, __global float *v)
     
     }
     """%{'NY':N, 'NX': N}
+    
+        knl2 = """
+__kernel void update(__global float *u, __global float *v)
+{
+    int i = get_global_id(0);
+    int j = get_global_id(1);
+    int x = get_local_id(0)+1;
+    int y = get_local_id(1)+1;
+    int lsize = %(lsize)d;
+    int ny = %(NY)d;
+    __local float tile[324];
+    float sum = 0.0f;
+    
+    tile[lsize*y + x] = u[ny*j + i];
+    
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    sum += tile[lsize*(y-1) + x];
+    sum += tile[lsize*(y+1) + x];
+    sum += tile[lsize*y + x + 1];
+    sum += tile[lsize*y + x - 1];
+    sum *= 0.25f;
+    
+    v[ny*j + i] = sum;
+    
+    }
+    """%{'NY':N, 'NX': N, 'lsize':18}
+        
+        prg = cl.Program(ctx, knl2
         )
         prg.build()
         yield 0
@@ -70,8 +99,8 @@ __kernel void update(__global float *u, __global float *v)
         ct = 0
         while True:
             for i in xrange(reps):
-                evt = prg.update(queue, ((N-2),(N-2)), None, U_buf, V_buf)
-                evt = prg.update(queue, ((N-2),(N-2)), None, V_buf, U_buf, wait_for=[evt])
+                evt = prg.update(queue, ((N),(N)), (16,16), U_buf, V_buf,g_times_l=False)
+                evt = prg.update(queue, ((N),(N)), (16,16), V_buf, U_buf, wait_for=[evt], g_times_l=False)
                 ct += 1
             queue.finish()
             yield ct
@@ -112,20 +141,28 @@ __kernel void update(__global float *u, __global float *v)
         
         
 if __name__=="__main__":
+    import traceback
     results={}
-    for dev_id in ("omp", "gpu", "cpu"):
+    for dev_id in ("gpu", "omp", "cpu"):
         b = Bencher(dev_id)
         out = []
         done = set()
-        for n in 10**(numpy.linspace(1,3.3,100)):
-            N = int(n)
-            if N in done:
-                continue
-            else:
-                done.add(N)
-            rate, ops = b.run(N)
-            print N, ":", rate, ops
-            out.append((N,rate,ops))
+        try:
+            for n in 2**numpy.linspace(3,11,25):
+                N = int(n)
+                if N in done:
+                    continue
+                else:
+                    done.add(N)
+                try:
+                    rate, ops = b.run(N)
+                    print N, ":", rate, ops
+                    out.append((N,rate,ops))
+                except cl.LogicError:
+                    #traceback.print_exc()
+                    print "failed at", N
+        except IndexError:
+            continue
         results[dev_id] = out
     from matplotlib import pyplot as pp
     for name in results:
