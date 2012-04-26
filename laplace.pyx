@@ -115,3 +115,24 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
             u[N/2,j] = u[(N/2)-1,j]
     
     return max_delta *0.25*2*N*N*M*M*(dx2+dy2) / (3.141592654*(M*M*dx2 + N*N*dy2))
+
+
+def semi_update(np.ndarray[double, ndim=2] r, #IN
+                np.ndarray[double, ndim=2] b, #OUT
+                np.ndarray[int, ndim=2] op):
+    cdef:
+        unsigned int i, j, J, N=r.shape[0], M=r.shape[1]
+        
+    """Checker board half-update scheme
+    op - 0 = FD update
+         1 = boundary 1
+         2 = boundary 2 etc.
+    """
+    for J in xrange(1, M/2):
+        for i in xrange(1, N):
+            j = 2*J-1
+            if op[i-1,j+1]==1:
+                b[i-1,j+1] = 0.25*(r[i-1,j]+r[i-1,j+2]+r[i-1,j+1]+r[i,j+1])
+            if op[i,j]==1:
+                b[i,j] = 0.25*(r[i,j-1]+r[i,j+1]+r[i-1,j]+r[i,j])
+                
