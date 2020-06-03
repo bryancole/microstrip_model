@@ -32,7 +32,7 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
         double dx2, dy2, delta, max_delta, update
     
     dx2 = dx*dx
-    dy2 = dy*dy
+    dy2 = dy*dy 
             
     for ct in xrange(100):
         max_delta = 0.0
@@ -107,3 +107,70 @@ def update(np.ndarray[double, ndim=2] u, #shape=(N,M,2)
             u[N/2,j] = u[(N/2)-1,j]
     
     return max_delta *0.25*2*N*N*M*M*(dx2+dy2) / (3.141592654*(M*M*dx2 + N*N*dy2))
+
+@cython.boundscheck(False)
+@cython.cdivision(True)
+def semi_update(np.ndarray[double, ndim=2] r, #IN
+                np.ndarray[double, ndim=2] b, #OUT
+                np.ndarray[int, ndim=2] op,
+                double dx2, double dy2):
+    cdef:
+        unsigned int i, j, J, N=r.shape[0], M=r.shape[1]
+        double *epsilon = [1.0, 2.2, 13.0] #dielectric constants
+        int OP
+        double E1,E2, top, bottom, left, right, newval, omega=1.9
+        
+    """Checker board half-update scheme
+    op - >=0 = FD update, epsilon indexed from *epsilon
+         -1 = constant potential
+         -2 = horizontal dielectric boundary
+         -3 = vertical dielectric boundary
+    """
+    for J in prange(1, M/2, nogil=True):
+        for i in xrange(1, N):
+            j = 2*J-1
+            OP = op[i-1,j+1]
+            top = r[i-1,j+2]
+            bottom = r[i-1,j]
+            left = r[i-1,j+1]
+            right = r[i,j+1]
+            if OP>=0:
+                newval = 0.5*((bottom + top)*dx2+\
+                                  (left + right)*dy2)/(dx2+dy2)
+                #delta = newval - b[i-1,j+1]
+                b[i-1,j+1] = (1-omega)*b[i-1,j+1] + omega*newval
+#            elif OP==-2:
+#                E1 = epsilon[op[i-1,j]] #bottom
+#                E2 = epsilon[op[i-1,j+2]] #top
+#                b[i-1,j+1] = 0.5*( (left + right)*dy2 +\
+#                                   2*(E1*bottom + E2*top)*dx2/(E1+E2)
+#                                   ) / (dx2 + dy2)
+#            elif OP==-3:
+#                E1 = epsilon[op[i-1,j+1]] #left
+#                E2 = epsilon[op[i,j+1]] #right
+#                b[i-1,j+1] = 0.5*( (bottom + top)*dx2 +\
+#                                   2*(E1*left + E2*right)*dy2/(E1+E2)
+#                                  ) / (dx2 + dy2)
+                
+            OP = op[i,j]
+            top = r[i,j+1]
+            bottom = r[i,j-1]
+            left = r[i-1,j]
+            right = r[i,j]
+            if OP>=0:
+                newval = 0.5*((bottom + top)*dx2+\
+                              (left + right)*dy2)/(dx2+dy2)
+                b[i,j] = (1-omega)*b[i,j] + omega*newval
+#            elif OP==-2:
+#                E1 = epsilon[op[i,j-1]] #bottom
+#                E2 = epsilon[op[i,j+1]] #top
+#                b[i-1,j+1] = 0.5*( (left + right)*dy2 +\
+#                                   2*(E1*bottom + E2*top)*dx2/(E1+E2)
+#                                   ) / (dx2 + dy2)
+#            elif OP==-3:
+#                E1 = epsilon[op[i-1,j]] #left
+#                E2 = epsilon[op[i,j]] #right
+#                b[i-1,j+1] = 0.5*( (bottom + top)*dx2 +\
+#                                   2*(E1*left + E2*right)*dy2/(E1+E2)
+#                                  ) / (dx2 + dy2)
+                                  

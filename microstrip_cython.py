@@ -57,6 +57,7 @@ for E_die in [13.0]:
     this = hash(args)
     
     try:
+        raise Exception("Don't load a file")
         h5 = openFile("start_%i.h5"%this)
         U = h5.root.data.read()
         h5.close()
@@ -99,12 +100,20 @@ for E_die in [13.0]:
     pp.figure()
     pp.imshow(U)
     pp.title("Die E-r = %f"%E_die)
+    pp.xlabel("X position")
+    pp.ylabel("Y position")
     pp.colorbar()
+    
     pp.figure()
     pp.plot(Qlist, 'ro-')
     pp.title("Die E-r = %f"%E_die)
+    pp.xlabel("Python func calls")
+    pp.ylabel("Maximum error")
+    
     pp.figure()
     pp.plot(numpy.diff(U[NX/2,:]),'o-')
+    pp.ylabel("Electric field")
+    pp.xlabel("Position")
 pp.show()
 
 

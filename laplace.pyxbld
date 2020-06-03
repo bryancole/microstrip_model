@@ -4,8 +4,8 @@ def make_ext(modname, pyxfilename):
     import numpy as np
     print('making extension with OpenMP support')
     ext = Extension(name='laplace', sources=['laplace.pyx'],
-                    extra_compile_args=['-fopenmp'],
-                    extra_link_args=['-fopenmp'],
+                    extra_compile_args=[r'/openmp'],
+                    #extra_link_args=[r'-fopenmp'],
                     #libraries=['gomp'],
                     include_dirs=[np.get_include()])
     return ext
